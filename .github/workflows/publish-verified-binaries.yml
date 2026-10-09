@@ -42,7 +42,7 @@ jobs:
           assert hashlib.sha256(manifest_bytes).hexdigest()==os.environ['RELEASE_MANIFEST_SHA256']
           manifest=json.loads(manifest_bytes)
           assert manifest['version']==version and manifest['platform']=='win32' and manifest['architecture']=='x64'
-          assert {file['name'] for file in manifest['files']}==allowed-{'release-manifest.json','Management Hub 0.5.4 Screenshots.zip','054-all-tasks-multi-filters-1600x900.png','054-all-tasks-selection-bulk-1600x900.png','054-team-multiple-roles-markets-1600x900.png','054-manage-roles-markets-1600x900.png','054-manage-properties-categories-1600x900.png','054-data-management-1600x900.png','054-about-update-state-1600x900.png'}
+          assert {file['name'] for file in manifest['files']}==allowed-{'release-manifest.json'}
           for file in manifest['files']:
             data=(root/file['name']).read_bytes()
             assert len(data)==file['bytes'] and hashlib.sha256(data).hexdigest()==file['sha256']
