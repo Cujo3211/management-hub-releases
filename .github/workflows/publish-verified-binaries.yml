@@ -54,5 +54,31 @@ jobs:
           RELEASE_VERSION: ${{ inputs.version }}
         run: |
           printf '%s\n' 'Management Hub Windows x64. Application source remains private.' '' 'Use Setup for the normal per-user installation; use Portable without installing. Internal builds are unsigned and Windows may display Unknown publisher.' '' 'All source checks, regression tests, packaged smoke, 0.5.3 upgrade/restore, and actual updater installation passed before publication.' > release-notes.txt
-          gh release create "v$RELEASE_VERSION" --title "Management Hub $RELEASE_VERSION" --notes-file release-notes.txt --target "$GITHUB_SHA"
-          gh release upload "v$RELEASE_VERSION" 'verified/Management Hub Setup.exe' 'verified/Management Hub Portable.exe' 'verified/Management Hub Windows x64.zip' 'verified/Management Hub Setup.exe.blockmap' 'verified/latest.yml' 'verified/release-manifest.json' 'verified/Management Hub 0.5.4 Screenshots.zip' 'verified/054-all-tasks-multi-filters-1600x900.png' 'verified/054-all-tasks-selection-bulk-1600x900.png' 'verified/054-team-multiple-roles-markets-1600x900.png' 'verified/054-manage-roles-markets-1600x900.png' 'verified/054-manage-properties-categories-1600x900.png' 'verified/054-data-management-1600x900.png' 'verified/054-about-update-state-1600x900.png'
+          if gh release view "v$RELEASE_VERSION" >/dev/null 2>&1; then
+            gh release edit "v$RELEASE_VERSION" --title "Management Hub $RELEASE_VERSION" --notes-file release-notes.txt
+          else
+            gh release create "v$RELEASE_VERSION" --title "Management Hub $RELEASE_VERSION" --notes-file release-notes.txt --target "$GITHUB_SHA"
+          fi
+          gh release upload "v$RELEASE_VERSION" 'verified/Management Hub Setup.exe' 'verified/Management Hub Portable.exe' 'verified/Management Hub Windows x64.zip' 'verified/Management Hub Setup.exe.blockmap' 'verified/latest.yml' 'verified/release-manifest.json' 'verified/Management Hub 0.5.4 Screenshots.zip' 'verified/054-all-tasks-multi-filters-1600x900.png' 'verified/054-all-tasks-selection-bulk-1600x900.png' 'verified/054-team-multiple-roles-markets-1600x900.png' 'verified/054-manage-roles-markets-1600x900.png' 'verified/054-manage-properties-categories-1600x900.png' 'verified/054-data-management-1600x900.png' 'verified/054-about-update-state-1600x900.png' --clobber
+      - name: Verify every public download without credentials
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          python3 - <<'PY'
+          import hashlib,json,os,pathlib,urllib.request
+          root=pathlib.Path('verified')
+          manifest_bytes=(root/'release-manifest.json').read_bytes()
+          manifest=json.loads(manifest_bytes)
+          files=manifest['files']+[{'name':'release-manifest.json','bytes':len(manifest_bytes),'sha256':hashlib.sha256(manifest_bytes).hexdigest()}]
+          base='https://github.com/Cujo3211/management-hub-releases/releases/download/v'+os.environ['RELEASE_VERSION']+'/'
+          for file in files:
+            url=base+file['name'].replace(' ','.')
+            digest=hashlib.sha256(); length=0
+            with urllib.request.urlopen(url,timeout=120) as incoming:
+              while chunk:=incoming.read(1024*1024): digest.update(chunk); length+=len(chunk)
+            assert length==file['bytes'] and digest.hexdigest()==file['sha256'], file['name']
+            print('Public download verified:',file['name'])
+          with urllib.request.urlopen('https://github.com/Cujo3211/management-hub-releases/releases/latest/download/latest.yml',timeout=120) as incoming:
+            assert incoming.read()==(root/'latest.yml').read_bytes()
+          print('Credential-free stable updater endpoint verified.')
+          PY
