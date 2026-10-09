@@ -30,7 +30,14 @@ jobs:
           version=os.environ['RELEASE_VERSION']
           assert re.fullmatch(r'\d+\.\d+\.\d+',version)
           assets=json.loads(os.environ['RELEASE_ASSETS'])
-          allowed={'Management Hub Setup.exe','Management Hub Portable.exe','Management Hub Windows x64.zip','Management Hub Setup.exe.blockmap','latest.yml','release-manifest.json','Management Hub 0.5.4 Screenshots.zip','054-all-tasks-multi-filters-1600x900.png','054-all-tasks-selection-bulk-1600x900.png','054-team-multiple-roles-markets-1600x900.png','054-manage-roles-markets-1600x900.png','054-manage-properties-categories-1600x900.png','054-data-management-1600x900.png','054-about-update-state-1600x900.png'}
+          base={'Management Hub Setup.exe','Management Hub Portable.exe','Management Hub Windows x64.zip','Management Hub Setup.exe.blockmap','latest.yml','release-manifest.json'}
+          screenshots={
+            '0.5.4':['054-all-tasks-multi-filters-1600x900.png','054-all-tasks-selection-bulk-1600x900.png','054-team-multiple-roles-markets-1600x900.png','054-manage-roles-markets-1600x900.png','054-manage-properties-categories-1600x900.png','054-data-management-1600x900.png','054-about-update-state-1600x900.png'],
+            '0.5.5':['055-archived-recovery-1600x900.png','055-intake-attachments-1600x900.png','055-task-photo-gallery-1600x900.png','055-team-profile-photos-1600x900.png','055-property-import-preview-1600x900.png'],
+            '0.6.0':['060-desktop-menu-1600x900.png','060-workspace-selector-1600x900.png','060-workspace-creation-1600x900.png','060-workspace-save-as-1600x900.png','060-workspace-export-import-1600x900.png','060-workspace-data-management-1600x900.png'],
+          }
+          assert version in screenshots, 'Unapproved production version (test fixtures must never be published)'
+          allowed=base|{f'Management Hub {version} Screenshots.zip'}|set(screenshots[version])
           assert set(assets)==allowed
           root=pathlib.Path('verified'); root.mkdir()
           for name,url in assets.items():
@@ -53,13 +60,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ inputs.version }}
         run: |
-          printf '%s\n' 'Management Hub Windows x64. Application source remains private.' '' 'Use Setup for the normal per-user installation; use Portable without installing. Internal builds are unsigned and Windows may display Unknown publisher.' '' 'All source checks, regression tests, packaged smoke, 0.5.3 upgrade/restore, and actual updater installation passed before publication.' > release-notes.txt
+          printf '%s\n' 'Management Hub Windows x64. Application source remains private.' '' 'Use Setup for the normal per-user installation; use Portable without installing. Internal builds are unsigned and Windows may display Unknown publisher.' '' 'All source checks, regression tests, packaged smoke, previous-version upgrade/restore, and actual updater installation passed before publication.' > release-notes.txt
           if gh release view "v$RELEASE_VERSION" >/dev/null 2>&1; then
             gh release edit "v$RELEASE_VERSION" --title "Management Hub $RELEASE_VERSION" --notes-file release-notes.txt
           else
             gh release create "v$RELEASE_VERSION" --title "Management Hub $RELEASE_VERSION" --notes-file release-notes.txt --target "$GITHUB_SHA"
           fi
-          gh release upload "v$RELEASE_VERSION" 'verified/Management Hub Setup.exe' 'verified/Management Hub Portable.exe' 'verified/Management Hub Windows x64.zip' 'verified/Management Hub Setup.exe.blockmap' 'verified/latest.yml' 'verified/release-manifest.json' 'verified/Management Hub 0.5.4 Screenshots.zip' 'verified/054-all-tasks-multi-filters-1600x900.png' 'verified/054-all-tasks-selection-bulk-1600x900.png' 'verified/054-team-multiple-roles-markets-1600x900.png' 'verified/054-manage-roles-markets-1600x900.png' 'verified/054-manage-properties-categories-1600x900.png' 'verified/054-data-management-1600x900.png' 'verified/054-about-update-state-1600x900.png' --clobber
+          mapfile -d '' files < <(find verified -maxdepth 1 -type f -print0)
+          gh release upload "v$RELEASE_VERSION" "${files[@]}" --clobber
       - name: Verify every public download without credentials
         env:
           RELEASE_VERSION: ${{ inputs.version }}
