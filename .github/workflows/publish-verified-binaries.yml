@@ -1,0 +1,58 @@
+name: Publish verified Windows binaries
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Verified stable version
+        required: true
+      assets:
+        description: JSON map of signed download URLs for verified binary assets only
+        required: true
+      manifest_sha256:
+        description: SHA256 of verified release-manifest.json from private Windows run
+        required: true
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and verify every binary against the trusted release manifest
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_ASSETS: ${{ inputs.assets }}
+          RELEASE_MANIFEST_SHA256: ${{ inputs.manifest_sha256 }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, re, urllib.parse, urllib.request
+          version=os.environ['RELEASE_VERSION']
+          assert re.fullmatch(r'\d+\.\d+\.\d+',version)
+          assets=json.loads(os.environ['RELEASE_ASSETS'])
+          allowed={'Management Hub Setup.exe','Management Hub Portable.exe','Management Hub Windows x64.zip','Management Hub Setup.exe.blockmap','latest.yml','release-manifest.json'}
+          assert set(assets)==allowed
+          root=pathlib.Path('verified'); root.mkdir()
+          for name,url in assets.items():
+            parsed=urllib.parse.urlsplit(url)
+            assert parsed.scheme=='https' and parsed.hostname in {'release-assets.githubusercontent.com','objects.githubusercontent.com','github-releases.githubusercontent.com'}, 'Only signed GitHub binary download URLs are accepted'
+            with urllib.request.urlopen(url,timeout=120) as incoming, (root/name).open('wb') as output:
+              while chunk:=incoming.read(1024*1024): output.write(chunk)
+          manifest_bytes=(root/'release-manifest.json').read_bytes()
+          assert hashlib.sha256(manifest_bytes).hexdigest()==os.environ['RELEASE_MANIFEST_SHA256']
+          manifest=json.loads(manifest_bytes)
+          assert manifest['version']==version and manifest['platform']=='win32' and manifest['architecture']=='x64'
+          assert {file['name'] for file in manifest['files']}==allowed-{'release-manifest.json'}
+          for file in manifest['files']:
+            data=(root/file['name']).read_bytes()
+            assert len(data)==file['bytes'] and hashlib.sha256(data).hexdigest()==file['sha256']
+          print('Verified stable binary bundle and update metadata against private Windows evidence.')
+          PY
+      - name: Publish stable binary release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          printf '%s\n' 'Management Hub Windows x64. Application source remains private.' '' 'Use Setup for the normal per-user installation; use Portable without installing. Internal builds are unsigned and Windows may display Unknown publisher.' '' 'All source checks, regression tests, packaged smoke, 0.5.3 upgrade/restore, and actual updater installation passed before publication.' > release-notes.txt
+          gh release create "v$RELEASE_VERSION" --title "Management Hub $RELEASE_VERSION" --notes-file release-notes.txt --target "$GITHUB_SHA"
+          gh release upload "v$RELEASE_VERSION" 'verified/Management Hub Setup.exe' 'verified/Management Hub Portable.exe' 'verified/Management Hub Windows x64.zip' 'verified/Management Hub Setup.exe.blockmap' 'verified/latest.yml' 'verified/release-manifest.json'
