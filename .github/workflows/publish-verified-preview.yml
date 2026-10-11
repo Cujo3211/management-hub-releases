@@ -28,7 +28,6 @@ jobs:
       - name: Verify immutable Production feed and every Preview asset against private Windows evidence
         env:
           PREVIEW_VERSION: ${{ inputs.version }}
-          PREVIEW_ASSETS: ${{ inputs.assets }}
           PREVIEW_MANIFEST_SHA256: ${{ inputs.manifest_sha256 }}
           STABLE_FEED_SHA256: ${{ inputs.stable_feed_sha256 }}
         run: |
@@ -40,7 +39,8 @@ jobs:
           with urllib.request.urlopen(stable_url,timeout=120) as incoming: stable=incoming.read()
           assert hashlib.sha256(stable).hexdigest()==os.environ['STABLE_FEED_SHA256']
           root=pathlib.Path('verified-preview');root.mkdir();pathlib.Path('production-feed-before.yml').write_bytes(stable)
-          assets=json.loads(os.environ['PREVIEW_ASSETS'])
+          event=json.loads(pathlib.Path(os.environ['GITHUB_EVENT_PATH']).read_text())
+          assets=json.loads(event['inputs']['assets'])
           allowed={'Management Hub Preview Setup.exe','Management Hub Preview Portable.exe','Management Hub Preview Setup.exe.blockmap','Management Hub Preview Windows x64.zip','Management Hub Preview Screenshots.zip','Management Hub Preview Demo.mhub','preview.yml','release-manifest.json'}|{f'preview-{name}-1600x900.png' for name in ['side-by-side','installed-apps','dashboard','workspace-selector','about','update-notification','production-about']}
           assert set(assets)==allowed, 'Only explicitly verified Preview binaries, fictional demo and requested screenshots may be published'
           for name,url in assets.items():
