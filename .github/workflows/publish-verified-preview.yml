@@ -1,0 +1,122 @@
+name: Publish verified isolated Preview binaries
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Verified Preview prerelease version
+        required: true
+      assets:
+        description: JSON of signed URLs from the passing private Windows run
+        required: true
+      manifest_sha256:
+        description: SHA256 of the verified private Preview manifest
+        required: true
+      stable_feed_sha256:
+        description: Unchanged approved Production latest.yml SHA256
+        required: true
+permissions:
+  contents: write
+concurrency:
+  group: preview-binary-publication
+  cancel-in-progress: false
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify immutable Production feed and every Preview asset against private Windows evidence
+        env:
+          PREVIEW_VERSION: ${{ inputs.version }}
+          PREVIEW_ASSETS: ${{ inputs.assets }}
+          PREVIEW_MANIFEST_SHA256: ${{ inputs.manifest_sha256 }}
+          STABLE_FEED_SHA256: ${{ inputs.stable_feed_sha256 }}
+        run: |
+          python3 - <<'PY'
+          import hashlib,json,os,pathlib,re,urllib.parse,urllib.request
+          version=os.environ['PREVIEW_VERSION']
+          assert re.fullmatch(r'0\.6\.1-preview\.[1-9]\d*',version), 'Only Preview prereleases can use this workflow'
+          stable_url='https://github.com/Cujo3211/management-hub-releases/releases/latest/download/latest.yml'
+          with urllib.request.urlopen(stable_url,timeout=120) as incoming: stable=incoming.read()
+          assert hashlib.sha256(stable).hexdigest()==os.environ['STABLE_FEED_SHA256']
+          root=pathlib.Path('verified-preview');root.mkdir();pathlib.Path('production-feed-before.yml').write_bytes(stable)
+          assets=json.loads(os.environ['PREVIEW_ASSETS'])
+          allowed={'Management Hub Preview Setup.exe','Management Hub Preview Portable.exe','Management Hub Preview Setup.exe.blockmap','Management Hub Preview Windows x64.zip','Management Hub Preview Screenshots.zip','Management Hub Preview Demo.mhub','preview.yml','release-manifest.json'}|{f'preview-{name}-1600x900.png' for name in ['side-by-side','installed-apps','dashboard','workspace-selector','about','update-notification','production-about']}
+          assert set(assets)==allowed, 'Only explicitly verified Preview binaries, fictional demo and requested screenshots may be published'
+          for name,url in assets.items():
+            parsed=urllib.parse.urlsplit(url)
+            assert parsed.scheme=='https' and parsed.hostname in {'release-assets.githubusercontent.com','objects.githubusercontent.com','github-releases.githubusercontent.com'}
+            with urllib.request.urlopen(url,timeout=120) as incoming,(root/name).open('wb') as output:
+              while chunk:=incoming.read(1024*1024):output.write(chunk)
+          data=(root/'release-manifest.json').read_bytes();assert hashlib.sha256(data).hexdigest()==os.environ['PREVIEW_MANIFEST_SHA256']
+          manifest=json.loads(data)
+          assert manifest['version']==version and manifest['channel']=='preview' and manifest['appId']=='org.managementhub.desktop.preview' and manifest['productName']=='Management Hub Preview'
+          assert manifest['platform']=='win32' and manifest['architecture']=='x64'
+          assert manifest['productionBaselineCommit']=='8c22b1f57ddca395da5f97740553d45d441cae1f'
+          assert re.fullmatch(r'[a-f0-9]{40}',manifest['sourceCommit']) and str(manifest['privateWorkflowRun']).isdigit()
+          for gate in ['concurrentExecution','dataIsolation','productionBytePreservation','previewUpdater','backupRestore','bothUninstallOrders','portable','feedSeparation','singleInstance','futureSchemaRejection']:assert manifest['verification'][gate] is True,gate
+          assert {file['name'] for file in manifest['files']}==allowed-{'release-manifest.json'}
+          for file in manifest['files']:
+            data=(root/file['name']).read_bytes()
+            assert len(data)==file['bytes'] and hashlib.sha256(data).hexdigest()==file['sha256'] and hashlib.sha512(data).digest()==__import__('base64').b64decode(file['sha512'])
+          feed=(root/'preview.yml').read_text()
+          assert re.search(r'^version: '+re.escape(version)+r'$',feed,re.M)
+          assert f'https://github.com/Cujo3211/management-hub-releases/releases/download/v{version}/Management.Hub.Preview.Setup.exe' in feed
+          assert 'releases/latest/' not in feed and 'Management.Hub.Setup.exe' not in feed
+          print('Verified all independent Preview lifecycle gates and asset hashes; Production feed remains unchanged.')
+          PY
+      - name: Publish immutable Preview prerelease without changing stable latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREVIEW_VERSION: ${{ inputs.version }}
+        run: |
+          python3 - <<'PY'
+          import json,os,subprocess
+          tag='v'+os.environ['PREVIEW_VERSION']
+          result=subprocess.run(['gh','release','view',tag,'--json','isDraft,isPrerelease'],capture_output=True,text=True)
+          if result.returncode==0:
+            release=json.loads(result.stdout)
+            assert release['isDraft'] and release['isPrerelease'], 'Published Preview releases are immutable; use a new prerelease version'
+          else:
+            subprocess.run(['gh','release','create',tag,'--draft','--prerelease','--latest=false','--title','Management Hub Preview '+os.environ['PREVIEW_VERSION'],'--notes','Independent Preview installation alongside Production 0.6.0. Actual Windows coexistence, updater, backup/restore and both uninstall orders passed. Source stays private. Unsigned Windows x64; Portable updates are manual. Optional Demo.mhub contains fictional records only.','--target',os.environ['GITHUB_SHA']],check=True)
+          PY
+          mapfile -d '' files < <(find verified-preview -maxdepth 1 -type f -print0)
+          gh release upload "v$PREVIEW_VERSION" "${files[@]}" --clobber
+          gh release edit "v$PREVIEW_VERSION" --draft=false --prerelease --latest=false
+      - name: Verify anonymous immutable downloads before moving the Preview channel pointer
+        env:
+          PREVIEW_VERSION: ${{ inputs.version }}
+        run: |
+          python3 - <<'PY'
+          import hashlib,json,os,pathlib,urllib.request
+          root=pathlib.Path('verified-preview');data=(root/'release-manifest.json').read_bytes();manifest=json.loads(data)
+          files=manifest['files']+[{'name':'release-manifest.json','bytes':len(data),'sha256':hashlib.sha256(data).hexdigest()}]
+          base='https://github.com/Cujo3211/management-hub-releases/releases/download/v'+os.environ['PREVIEW_VERSION']+'/'
+          for file in files:
+            digest=hashlib.sha256();length=0
+            with urllib.request.urlopen(base+file['name'].replace(' ','.'),timeout=120) as incoming:
+              while chunk:=incoming.read(1024*1024):digest.update(chunk);length+=len(chunk)
+            assert length==file['bytes'] and digest.hexdigest()==file['sha256'],file['name']
+            print('Public Preview download verified:',file['name'])
+          PY
+      - name: Advance only the physically separate Preview feed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view preview-channel >/dev/null 2>&1; then
+            gh release view preview-channel --json isPrerelease | python3 -c 'import json,sys;assert json.load(sys.stdin)["isPrerelease"]'
+          else
+            gh release create preview-channel --prerelease --latest=false --title 'Management Hub Preview update channel' --notes 'Preview update metadata only. Production stable feed is independent.' --target "$GITHUB_SHA"
+          fi
+          gh release upload preview-channel verified-preview/preview.yml --clobber
+          gh release edit preview-channel --prerelease --latest=false
+      - name: Verify both credential-free feeds and unchanged stable release
+        run: |
+          python3 - <<'PY'
+          import json,pathlib,urllib.request
+          with urllib.request.urlopen('https://github.com/Cujo3211/management-hub-releases/releases/download/preview-channel/preview.yml',timeout=120) as incoming: assert incoming.read()==pathlib.Path('verified-preview/preview.yml').read_bytes()
+          with urllib.request.urlopen('https://github.com/Cujo3211/management-hub-releases/releases/latest/download/latest.yml',timeout=120) as incoming: assert incoming.read()==pathlib.Path('production-feed-before.yml').read_bytes()
+          with urllib.request.urlopen('https://api.github.com/repos/Cujo3211/management-hub-releases/releases/latest',timeout=120) as incoming: stable=json.load(incoming)
+          assert stable['tag_name']=='v0.6.0' and not stable['prerelease']
+          print('Preview feed verified; Production v0.6.0 remains latest with byte-identical stable metadata.')
+          PY
