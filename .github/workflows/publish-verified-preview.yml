@@ -71,18 +71,25 @@ jobs:
           PREVIEW_VERSION: ${{ inputs.version }}
         run: |
           python3 - <<'PY'
-          import json,os,subprocess
+          import json,os,pathlib,subprocess,urllib.request
           tag='v'+os.environ['PREVIEW_VERSION']
           result=subprocess.run(['gh','release','view',tag,'--json','isDraft,isPrerelease'],capture_output=True,text=True)
           if result.returncode==0:
             release=json.loads(result.stdout)
-            assert release['isDraft'] and release['isPrerelease'], 'Published Preview releases are immutable; use a new prerelease version'
+            assert release['isPrerelease'], 'A stable release cannot be reused by the Preview publisher'
+            if not release['isDraft']:
+              url='https://github.com/Cujo3211/management-hub-releases/releases/download/'+tag+'/release-manifest.json'
+              with urllib.request.urlopen(url,timeout=120) as incoming: published=incoming.read()
+              assert published==pathlib.Path('verified-preview/release-manifest.json').read_bytes(), 'Published Preview releases are immutable; use a new prerelease version'
+              pathlib.Path('preview-already-published').touch()
           else:
             subprocess.run(['gh','release','create',tag,'--draft','--prerelease','--latest=false','--title','Management Hub Preview '+os.environ['PREVIEW_VERSION'],'--notes','Independent Preview installation alongside Production 0.6.0. Actual Windows coexistence, updater, backup/restore and both uninstall orders passed. Source stays private. Unsigned Windows x64; Portable updates are manual. Optional Demo.mhub contains fictional records only.','--target',os.environ['GITHUB_SHA']],check=True)
           PY
+          if [[ ! -f preview-already-published ]]; then
           mapfile -d '' files < <(find verified-preview -maxdepth 1 -type f -print0)
           gh release upload "v$PREVIEW_VERSION" "${files[@]}" --clobber
           gh release edit "v$PREVIEW_VERSION" --draft=false --prerelease --latest=false
+          fi
       - name: Verify anonymous immutable downloads before moving the Preview channel pointer
         env:
           PREVIEW_VERSION: ${{ inputs.version }}
@@ -99,22 +106,54 @@ jobs:
             assert length==file['bytes'] and digest.hexdigest()==file['sha256'],file['name']
             print('Public Preview download verified:',file['name'])
           PY
-      - name: Advance only the physically separate Preview feed
+      - name: Atomically advance only the physically separate Preview feed
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view preview-channel >/dev/null 2>&1; then
-            gh release view preview-channel --json isPrerelease | python3 -c 'import json,sys;assert json.load(sys.stdin)["isPrerelease"]'
-          else
-            gh release create preview-channel --prerelease --latest=false --title 'Management Hub Preview update channel' --notes 'Preview update metadata only. Production stable feed is independent.' --target "$GITHUB_SHA"
-          fi
-          gh release upload preview-channel verified-preview/preview.yml --clobber
-          gh release edit preview-channel --prerelease --latest=false
+          python3 - <<'PYCODE'
+          import base64,json,os,pathlib,re,subprocess
+          repo=os.environ['GITHUB_REPOSITORY'];branch='preview-channel'
+          def api(path,payload=None):
+            args=['gh','api',path]
+            if payload is not None:args+=['--method','POST','--input','-']
+            result=subprocess.run(args,input=json.dumps(payload) if payload is not None else None,capture_output=True,text=True)
+            if result.returncode:
+              if 'HTTP 404' in result.stderr:return None
+              raise RuntimeError('GitHub metadata operation failed: '+result.stderr)
+            return json.loads(result.stdout)
+          if api(f'repos/{repo}/git/ref/heads/{branch}') is None:
+            api(f'repos/{repo}/git/refs',{'ref':'refs/heads/'+branch,'sha':os.environ['GITHUB_SHA']})
+          existing=api(f'repos/{repo}/contents/preview.yml?ref={branch}')
+          candidate=pathlib.Path('verified-preview/preview.yml').read_bytes()
+          payload={'message':'Publish verified independent Preview update metadata','branch':branch,'content':base64.b64encode(candidate).decode()}
+          if existing:
+            old=base64.b64decode(existing['content'])
+            if old==candidate:
+              print('Preview feed already contains the exact verified metadata.');raise SystemExit(0)
+            def version(data):
+              match=re.search(rb'^version: (\d+)\.(\d+)\.(\d+)-preview\.(\d+)$',data,re.M)
+              assert match,'Only strict Preview prerelease metadata belongs in this branch'
+              return tuple(map(int,match.groups()))
+            assert version(candidate)>=version(old),'Never downgrade the Preview channel'
+            payload['sha']=existing['sha']
+          args=['gh','api',f'repos/{repo}/contents/preview.yml','--method','PUT','--input','-']
+          subprocess.run(args,input=json.dumps(payload),capture_output=True,text=True,check=True)
+          print('Preview metadata committed atomically; Production latest.yml was not modified.')
+          PYCODE
       - name: Verify both credential-free feeds and unchanged stable release
         run: |
           python3 - <<'PY'
-          import json,pathlib,urllib.request
-          with urllib.request.urlopen('https://github.com/Cujo3211/management-hub-releases/releases/download/preview-channel/preview.yml',timeout=120) as incoming: assert incoming.read()==pathlib.Path('verified-preview/preview.yml').read_bytes()
+          import json,pathlib,time,urllib.request
+          expected=pathlib.Path('verified-preview/preview.yml').read_bytes()
+          for attempt in range(18):
+            try:
+              request=urllib.request.Request('https://raw.githubusercontent.com/Cujo3211/management-hub-releases/preview-channel/preview.yml?verification='+str(time.time_ns()),headers={'Cache-Control':'no-cache'})
+              with urllib.request.urlopen(request,timeout=30) as incoming: observed=incoming.read()
+              if observed==expected:break
+            except Exception:
+              if attempt==17:raise
+            time.sleep(5)
+          else:raise AssertionError('Anonymous Preview feed differs from the verified metadata')
           with urllib.request.urlopen('https://github.com/Cujo3211/management-hub-releases/releases/latest/download/latest.yml',timeout=120) as incoming: assert incoming.read()==pathlib.Path('production-feed-before.yml').read_bytes()
           with urllib.request.urlopen('https://api.github.com/repos/Cujo3211/management-hub-releases/releases/latest',timeout=120) as incoming: stable=json.load(incoming)
           assert stable['tag_name']=='v0.6.0' and not stable['prerelease']
