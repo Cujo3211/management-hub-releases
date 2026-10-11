@@ -1,12 +1,12 @@
-version: 0.6.1-preview.4
+version: 0.6.1-preview.5
 files:
   - url: >-
-      https://github.com/Cujo3211/management-hub-releases/releases/download/v0.6.1-preview.4/Management.Hub.Preview.Setup.exe
+      https://github.com/Cujo3211/management-hub-releases/releases/download/v0.6.1-preview.5/Management.Hub.Preview.Setup.exe
     sha512: >-
-      gmoSpMYolorX64swZgm6gWMff5v5q8Jpv62fhGLKUpoupw46lpFsAyUZM//TAegx3ToAXvwKBn9Y9kQ0eX3urw==
-    size: 123386028
+      +2ZqOHkyJR2ctcYf6uQYxsRWqioRtcSWyT9g6KfrMQ5dWFOF6hXwFfCScc/cpmQ7m3T5h4w12guJHQEnLKjlhQ==
+    size: 123386683
 path: >-
-  https://github.com/Cujo3211/management-hub-releases/releases/download/v0.6.1-preview.4/Management.Hub.Preview.Setup.exe
+  https://github.com/Cujo3211/management-hub-releases/releases/download/v0.6.1-preview.5/Management.Hub.Preview.Setup.exe
 sha512: >-
-  gmoSpMYolorX64swZgm6gWMff5v5q8Jpv62fhGLKUpoupw46lpFsAyUZM//TAegx3ToAXvwKBn9Y9kQ0eX3urw==
-releaseDate: '2026-10-11T18:49:27.171Z'
+  +2ZqOHkyJR2ctcYf6uQYxsRWqioRtcSWyT9g6KfrMQ5dWFOF6hXwFfCScc/cpmQ7m3T5h4w12guJHQEnLKjlhQ==
+releaseDate: '2026-10-11T22:24:47.877Z'
