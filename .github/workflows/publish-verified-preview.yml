@@ -42,6 +42,9 @@ jobs:
           event=json.loads(pathlib.Path(os.environ['GITHUB_EVENT_PATH']).read_text())
           assets=json.loads(event['inputs']['assets'])
           allowed={'Management Hub Preview Setup.exe','Management Hub Preview Portable.exe','Management Hub Preview Setup.exe.blockmap','Management Hub Preview Windows x64.zip','Management Hub Preview Screenshots.zip','Management Hub Preview Demo.mhub','preview.yml','release-manifest.json'}|{f'preview-{name}-1600x900.png' for name in ['side-by-side','installed-apps','dashboard','workspace-selector','about','update-notification','production-about']}
+          themes=['default','night','runner','agent','ring']
+          pages=['dashboard','all-tasks','intake','team','employee','task-detail','resolved','archived','image-gallery','property-import']
+          allowed|={f'{theme}-{page}-1600x900.png' for theme in themes for page in pages}|{'view-theme-menu-1600x900.png','theme-workspace-selector-1600x900.png','theme-no-workspace-1600x900.png','theme-dashboard-comparison.png','theme-all-tasks-comparison.png','theme-verification.json','approved-preview-update-summary.json','Management Hub Theme Sandbox.mhub'}
           assert set(assets)==allowed, 'Only explicitly verified Preview binaries, fictional demo and requested screenshots may be published'
           for name,url in assets.items():
             parsed=urllib.parse.urlsplit(url)
@@ -55,6 +58,8 @@ jobs:
           assert manifest['productionBaselineCommit']=='8c22b1f57ddca395da5f97740553d45d441cae1f'
           assert re.fullmatch(r'[a-f0-9]{40}',manifest['sourceCommit']) and str(manifest['privateWorkflowRun']).isdigit()
           for gate in ['concurrentExecution','dataIsolation','productionBytePreservation','previewUpdater','backupRestore','bothUninstallOrders','portable','feedSeparation','singleInstance','futureSchemaRejection']:assert manifest['verification'][gate] is True,gate
+          for gate in ['themeAccessibility','responsiveThemes','suppliedWorkspace','productionThemeProtection','keyboardNativeTheme','themeStatePreservation','appearancePersistence','displayScaling125','publicPreviewUpgrade','themes']:assert manifest['verification'][gate] is True,gate
+          assert manifest['verification']['approvedNames']==['Default','Night','Runner','Agent','Ring']
           assert {file['name'] for file in manifest['files']}==allowed-{'release-manifest.json'}
           for file in manifest['files']:
             data=(root/file['name']).read_bytes()
@@ -83,7 +88,7 @@ jobs:
               assert published==pathlib.Path('verified-preview/release-manifest.json').read_bytes(), 'Published Preview releases are immutable; use a new prerelease version'
               pathlib.Path('preview-already-published').touch()
           else:
-            subprocess.run(['gh','release','create',tag,'--draft','--prerelease','--latest=false','--title','Management Hub Preview '+os.environ['PREVIEW_VERSION'],'--notes','Independent Preview installation alongside Production 0.6.0. Actual Windows coexistence, updater, backup/restore and both uninstall orders passed. Source stays private. Unsigned Windows x64; Portable updates are manual. Optional Demo.mhub contains fictional records only.','--target',os.environ['GITHUB_SHA']],check=True)
+            subprocess.run(['gh','release','create',tag,'--draft','--prerelease','--latest=false','--title','Management Hub Preview '+os.environ['PREVIEW_VERSION'],'--notes','Independent Preview installation alongside Production 0.6.0. Five approved themes: Default, Night, Runner, Agent and Ring. Actual public Preview upgrade, native theme menu, AA checks, coexistence, updater, backup/restore and both uninstall orders passed. Source stays private. Unsigned Windows x64; Portable updates are manual. Optional Demo.mhub contains fictional records only.','--target',os.environ['GITHUB_SHA']],check=True)
           PY
           if [[ ! -f preview-already-published ]]; then
           mapfile -d '' files < <(find verified-preview -maxdepth 1 -type f -print0)
