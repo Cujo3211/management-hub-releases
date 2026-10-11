@@ -45,12 +45,23 @@ jobs:
           themes=['default','night','runner','agent','ring']
           pages=['dashboard','all-tasks','intake','team','employee','task-detail','resolved','archived','image-gallery','property-import']
           allowed|={f'{theme}-{page}-1600x900.png' for theme in themes for page in pages}|{'view-theme-menu-1600x900.png','theme-workspace-selector-1600x900.png','theme-no-workspace-1600x900.png','theme-dashboard-comparison.png','theme-all-tasks-comparison.png','theme-verification.json','approved-preview-update-summary.json','Management Hub Theme Sandbox.mhub'}
-          assert set(assets)==allowed, 'Only explicitly verified Preview binaries, fictional demo and requested screenshots may be published'
+          transfers={name for name in allowed if not name.endswith('.png')}
+          assert set(assets)==transfers, 'Only explicitly verified Preview binaries, fictional demo and screenshot bundle may be transferred'
           for name,url in assets.items():
             parsed=urllib.parse.urlsplit(url)
             assert parsed.scheme=='https' and parsed.hostname in {'release-assets.githubusercontent.com','objects.githubusercontent.com','github-releases.githubusercontent.com'}
             with urllib.request.urlopen(url,timeout=120) as incoming,(root/name).open('wb') as output:
               while chunk:=incoming.read(1024*1024):output.write(chunk)
+          import zipfile
+          with zipfile.ZipFile(root/'Management Hub Preview Screenshots.zip') as screenshots:
+            members=screenshots.infolist()
+            expected={name for name in allowed if name.endswith('.png')}
+            assert len(members)==len(expected) and {item.filename for item in members}==expected
+            assert sum(item.file_size for item in members)<128*1024*1024
+            for item in members:
+              assert item.file_size<8*1024*1024 and '/' not in item.filename and '\\' not in item.filename and '..' not in item.filename
+              data=screenshots.read(item);assert data[:8]==b'\x89PNG\r\n\x1a\n'
+              (root/item.filename).write_bytes(data)
           data=(root/'release-manifest.json').read_bytes();assert hashlib.sha256(data).hexdigest()==os.environ['PREVIEW_MANIFEST_SHA256']
           manifest=json.loads(data)
           assert manifest['version']==version and manifest['channel']=='preview' and manifest['appId']=='org.managementhub.desktop.preview' and manifest['productName']=='Management Hub Preview'
