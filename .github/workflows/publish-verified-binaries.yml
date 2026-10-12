@@ -35,6 +35,7 @@ jobs:
             '0.5.4':['054-all-tasks-multi-filters-1600x900.png','054-all-tasks-selection-bulk-1600x900.png','054-team-multiple-roles-markets-1600x900.png','054-manage-roles-markets-1600x900.png','054-manage-properties-categories-1600x900.png','054-data-management-1600x900.png','054-about-update-state-1600x900.png'],
             '0.5.5':['055-archived-recovery-1600x900.png','055-intake-attachments-1600x900.png','055-task-photo-gallery-1600x900.png','055-team-profile-photos-1600x900.png','055-property-import-preview-1600x900.png'],
             '0.6.0':['060-desktop-menu-1600x900.png','060-workspace-selector-1600x900.png','060-workspace-creation-1600x900.png','060-workspace-save-as-1600x900.png','060-workspace-export-import-1600x900.png','060-workspace-data-management-1600x900.png'],
+            '0.6.1':['061-theme-default-1600x900.png','061-theme-night-1600x900.png','061-theme-runner-1600x900.png','061-theme-agent-1600x900.png','061-theme-ring-1600x900.png','061-task-flow-controls-1600x900.png','061-priority-calculations-1600x900.png','061-priority-impact-1600x900.png'],
           }
           assert version in screenshots, 'Unapproved production version (test fixtures must never be published)'
           allowed=base|{f'Management Hub {version} Screenshots.zip'}|set(screenshots[version])
@@ -61,13 +62,19 @@ jobs:
           RELEASE_VERSION: ${{ inputs.version }}
         run: |
           printf '%s\n' 'Management Hub Windows x64. Application source remains private.' '' 'Use Setup for the normal per-user installation; use Portable without installing. Internal builds are unsigned and Windows may display Unknown publisher.' '' 'All source checks, regression tests, packaged smoke, previous-version upgrade/restore, and actual updater installation passed before publication.' > release-notes.txt
-          if gh release view "v$RELEASE_VERSION" >/dev/null 2>&1; then
-            gh release edit "v$RELEASE_VERSION" --title "Management Hub $RELEASE_VERSION" --notes-file release-notes.txt
+          tag="v$RELEASE_VERSION"
+          if gh release view "$tag" --json isDraft > existing-release.json 2>/dev/null; then
+            if jq -e '.isDraft == false' existing-release.json >/dev/null; then
+              echo 'Release already published; verify its immutable public assets without overwriting.'
+              exit 0
+            fi
           else
-            gh release create "v$RELEASE_VERSION" --title "Management Hub $RELEASE_VERSION" --notes-file release-notes.txt --target "$GITHUB_SHA"
+            gh release create "$tag" --draft --latest=false --title "Management Hub $RELEASE_VERSION" --notes-file release-notes.txt --target "$GITHUB_SHA"
           fi
           mapfile -d '' files < <(find verified -maxdepth 1 -type f -print0)
-          gh release upload "v$RELEASE_VERSION" "${files[@]}" --clobber
+          gh release upload "$tag" "${files[@]}" --clobber
+          # The stable feed changes only after all trusted assets are uploaded.
+          gh release edit "$tag" --draft=false --latest=true --title "Management Hub $RELEASE_VERSION" --notes-file release-notes.txt
       - name: Verify every public download without credentials
         env:
           RELEASE_VERSION: ${{ inputs.version }}
