@@ -36,6 +36,7 @@ jobs:
             '0.5.5':['055-archived-recovery-1600x900.png','055-intake-attachments-1600x900.png','055-task-photo-gallery-1600x900.png','055-team-profile-photos-1600x900.png','055-property-import-preview-1600x900.png'],
             '0.6.0':['060-desktop-menu-1600x900.png','060-workspace-selector-1600x900.png','060-workspace-creation-1600x900.png','060-workspace-save-as-1600x900.png','060-workspace-export-import-1600x900.png','060-workspace-data-management-1600x900.png'],
             '0.6.1':['061-theme-default-1600x900.png','061-theme-night-1600x900.png','061-theme-runner-1600x900.png','061-theme-agent-1600x900.png','061-theme-ring-1600x900.png','061-task-flow-controls-1600x900.png','061-priority-calculations-1600x900.png','061-priority-impact-1600x900.png'],
+            '0.7.0':['070-theme-default-1600x900.png','070-theme-night-1600x900.png','070-theme-runner-1600x900.png','070-theme-agent-1600x900.png','070-theme-ring-1600x900.png','070-task-flow-controls-1600x900.png','070-priority-calculations-1600x900.png','070-priority-impact-1600x900.png','070-navigation-1600x900.png'],
           }
           assert version in screenshots, 'Unapproved production version (test fixtures must never be published)'
           allowed=base|{f'Management Hub {version} Screenshots.zip'}|set(screenshots[version])
@@ -61,7 +62,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ inputs.version }}
         run: |
-          printf '%s\n' 'Management Hub Windows x64. Application source remains private.' '' 'Use Setup for the normal per-user installation; use Portable without installing. Internal builds are unsigned and Windows may display Unknown publisher.' '' 'All source checks, regression tests, packaged smoke, previous-version upgrade/restore, and actual updater installation passed before publication.' > release-notes.txt
+          printf '%s\n' 'Management Hub Windows x64. Application source remains private.' '' 'Use Setup for the normal per-user installation; use Portable without installing. Internal builds are unsigned and Windows may display Unknown publisher.' '' 'All source checks, regression tests, packaged smoke, genuine v0.6.0 and v0.6.1 in-app upgrade/data-preservation tests, backup/restore, restart/reinstall, and actual updater installation passed before publication.' > release-notes.txt
           tag="v$RELEASE_VERSION"
           if gh release view "$tag" --json isDraft > existing-release.json 2>/dev/null; then
             if jq -e '.isDraft == false' existing-release.json >/dev/null; then
