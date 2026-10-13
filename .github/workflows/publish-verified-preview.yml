@@ -34,7 +34,7 @@ jobs:
           python3 - <<'PY'
           import hashlib,json,os,pathlib,re,urllib.parse,urllib.request
           version=os.environ['PREVIEW_VERSION']
-          assert re.fullmatch(r'0\.6\.1-preview\.[1-9]\d*',version), 'Only Preview prereleases can use this workflow'
+          assert version=='0.7.0-preview.1', 'Only the explicitly approved Preview candidate may be published'
           stable_url='https://github.com/Cujo3211/management-hub-releases/releases/latest/download/latest.yml'
           with urllib.request.urlopen(stable_url,timeout=120) as incoming: stable=incoming.read()
           assert hashlib.sha256(stable).hexdigest()==os.environ['STABLE_FEED_SHA256']
@@ -66,11 +66,15 @@ jobs:
           manifest=json.loads(data)
           assert manifest['version']==version and manifest['channel']=='preview' and manifest['appId']=='org.managementhub.desktop.preview' and manifest['productName']=='Management Hub Preview'
           assert manifest['platform']=='win32' and manifest['architecture']=='x64'
-          assert manifest['productionBaselineCommit']=='8c22b1f57ddca395da5f97740553d45d441cae1f'
+          assert manifest['productionBaselineCommit']=='81e229af2e4f1c6e0e79816b1d623eb8875b060a'
           assert re.fullmatch(r'[a-f0-9]{40}',manifest['sourceCommit']) and str(manifest['privateWorkflowRun']).isdigit()
           for gate in ['concurrentExecution','dataIsolation','productionBytePreservation','previewUpdater','backupRestore','bothUninstallOrders','portable','feedSeparation','singleInstance','futureSchemaRejection']:assert manifest['verification'][gate] is True,gate
           for gate in ['themeAccessibility','responsiveThemes','suppliedWorkspace','productionThemeProtection','keyboardNativeTheme','themeStatePreservation','appearancePersistence','displayScaling125','publicPreviewUpgrade','themes']:assert manifest['verification'][gate] is True,gate
           assert manifest['verification']['approvedNames']==['Default','Night','Runner','Agent','Ring']
+          assert manifest['verification']['nemoPrimaryBranding'] is True
+          upgrade=manifest['verification']['approvedUpgrade']
+          assert upgrade['from']=='0.6.1-preview.5' and upgrade['to']==version
+          for gate in ['publicPreviewUpgrade','workspacePreserved','appearancePersistence','exactDatabaseRowsPreserved','managedFileHashesPreserved','sqliteIntegrity']:assert upgrade[gate] is True,gate
           assert {file['name'] for file in manifest['files']}==allowed-{'release-manifest.json'}
           for file in manifest['files']:
             data=(root/file['name']).read_bytes()
@@ -99,7 +103,7 @@ jobs:
               assert published==pathlib.Path('verified-preview/release-manifest.json').read_bytes(), 'Published Preview releases are immutable; use a new prerelease version'
               pathlib.Path('preview-already-published').touch()
           else:
-            subprocess.run(['gh','release','create',tag,'--draft','--prerelease','--latest=false','--title','Management Hub Preview '+os.environ['PREVIEW_VERSION'],'--notes','Independent Preview installation alongside Production 0.6.0. Five approved themes: Default, Night, Runner, Agent and Ring. Actual public Preview upgrade, native theme menu, AA checks, coexistence, updater, backup/restore and both uninstall orders passed. Source stays private. Unsigned Windows x64; Portable updates are manual. Optional Demo.mhub contains fictional records only.','--target',os.environ['GITHUB_SHA']],check=True)
+            subprocess.run(['gh','release','create',tag,'--draft','--prerelease','--latest=false','--title','Management Hub Preview '+os.environ['PREVIEW_VERSION'],'--notes','Independent Preview installation alongside Production 0.7.0. Approved Production 0.7.0 functionality with Preview-only primary Nemo branding. Five approved themes: Default, Night, Runner, Agent and Ring. Actual public Preview upgrade, native theme menu, AA checks, coexistence, updater, backup/restore and both uninstall orders passed. Source stays private. Unsigned Windows x64; Portable updates are manual. Optional Demo.mhub contains fictional records only.','--target',os.environ['GITHUB_SHA']],check=True)
           PY
           if [[ ! -f preview-already-published ]]; then
           mapfile -d '' files < <(find verified-preview -maxdepth 1 -type f -print0)
@@ -172,6 +176,6 @@ jobs:
           else:raise AssertionError('Anonymous Preview feed differs from the verified metadata')
           with urllib.request.urlopen('https://github.com/Cujo3211/management-hub-releases/releases/latest/download/latest.yml',timeout=120) as incoming: assert incoming.read()==pathlib.Path('production-feed-before.yml').read_bytes()
           with urllib.request.urlopen('https://api.github.com/repos/Cujo3211/management-hub-releases/releases/latest',timeout=120) as incoming: stable=json.load(incoming)
-          assert stable['tag_name']=='v0.6.0' and not stable['prerelease']
-          print('Preview feed verified; Production v0.6.0 remains latest with byte-identical stable metadata.')
+          assert stable['tag_name']=='v0.7.0' and not stable['prerelease']
+          print('Preview feed verified; Production v0.7.0 remains latest with byte-identical stable metadata.')
           PY
