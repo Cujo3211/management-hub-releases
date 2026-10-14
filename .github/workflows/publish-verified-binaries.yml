@@ -19,6 +19,13 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      - name: Snapshot the independent Preview feed
+        run: |
+          python3 - <<'PY'
+          import pathlib,urllib.request
+          with urllib.request.urlopen('https://raw.githubusercontent.com/Cujo3211/management-hub-releases/preview-channel/preview.yml',timeout=60) as incoming:
+            pathlib.Path('preview-feed-before.yml').write_bytes(incoming.read())
+          PY
       - name: Download and verify every binary against the trusted release manifest
         env:
           RELEASE_VERSION: ${{ inputs.version }}
@@ -37,6 +44,7 @@ jobs:
             '0.6.0':['060-desktop-menu-1600x900.png','060-workspace-selector-1600x900.png','060-workspace-creation-1600x900.png','060-workspace-save-as-1600x900.png','060-workspace-export-import-1600x900.png','060-workspace-data-management-1600x900.png'],
             '0.6.1':['061-theme-default-1600x900.png','061-theme-night-1600x900.png','061-theme-runner-1600x900.png','061-theme-agent-1600x900.png','061-theme-ring-1600x900.png','061-task-flow-controls-1600x900.png','061-priority-calculations-1600x900.png','061-priority-impact-1600x900.png'],
             '0.7.0':['070-theme-default-1600x900.png','070-theme-night-1600x900.png','070-theme-runner-1600x900.png','070-theme-agent-1600x900.png','070-theme-ring-1600x900.png','070-task-flow-controls-1600x900.png','070-priority-calculations-1600x900.png','070-priority-impact-1600x900.png','070-navigation-1600x900.png'],
+            '0.7.1':['071-theme-default-1600x900.png','071-theme-night-1600x900.png','071-theme-runner-1600x900.png','071-theme-agent-1600x900.png','071-theme-ring-1600x900.png','071-task-flow-controls-1600x900.png','071-priority-calculations-1600x900.png','071-priority-impact-1600x900.png','071-navigation-1600x900.png','071-portable-information-1600x900.png'],
           }
           assert version in screenshots, 'Unapproved production version (test fixtures must never be published)'
           allowed=base|{f'Management Hub {version} Screenshots.zip'}|set(screenshots[version])
@@ -62,7 +70,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ inputs.version }}
         run: |
-          printf '%s\n' 'Management Hub Windows x64. Application source remains private.' '' 'Use Setup for the normal per-user installation; use Portable without installing. Internal builds are unsigned and Windows may display Unknown publisher.' '' 'All source checks, regression tests, packaged smoke, genuine v0.6.0 and v0.6.1 in-app upgrade/data-preservation tests, backup/restore, restart/reinstall, and actual updater installation passed before publication.' > release-notes.txt
+          printf '%s\n' 'Management Hub Windows x64. Application source remains private.' '' 'Use Setup for the normal per-user installation; use Portable without installing. Internal builds are unsigned and Windows may display Unknown publisher.' '' 'All source checks, regression tests, packaged smoke, genuine v0.6.0, v0.6.1 and v0.7.0 in-app upgrade/data-preservation tests, actual native portable Save/Save As dialogs, backup/restore, restart/reinstall, and actual updater installation passed before publication.' > release-notes.txt
           tag="v$RELEASE_VERSION"
           if gh release view "$tag" --json isDraft > existing-release.json 2>/dev/null; then
             if jq -e '.isDraft == false' existing-release.json >/dev/null; then
@@ -96,5 +104,7 @@ jobs:
             print('Public download verified:',file['name'])
           with urllib.request.urlopen('https://github.com/Cujo3211/management-hub-releases/releases/latest/download/latest.yml',timeout=120) as incoming:
             assert incoming.read()==(root/'latest.yml').read_bytes()
-          print('Credential-free stable updater endpoint verified.')
+          with urllib.request.urlopen('https://raw.githubusercontent.com/Cujo3211/management-hub-releases/preview-channel/preview.yml',timeout=60) as incoming:
+            assert incoming.read()==pathlib.Path('preview-feed-before.yml').read_bytes(),'Preview feed changed'
+          print('Credential-free stable updater endpoint verified; separate Preview feed unchanged.')
           PY
